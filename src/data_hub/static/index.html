@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Hub</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1f1d; --muted:#5b6560; --line:#d7ddd9; --accent:#1f6f43; --err:#a3281e; --code:#f2f5f3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141816; --fg:#e8ece9; --muted:#9aa7a0; --line:#2c3531; --accent:#5fc08a; --err:#f08a80; --code:#1d2320; }
+  }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  label { display:block; font-weight:600; margin:14px 0 4px; }
+  input, textarea, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; width:100%; box-sizing:border-box; }
+  button { width:auto; background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; margin-top:12px; padding:10px 20px; }
+  button.lang { background:transparent; color:var(--fg); border-color:var(--line); margin:0 0 0 8px; padding:4px 10px; }
+  header { display:flex; justify-content:space-between; align-items:start; }
+  pre { background:var(--code); padding:12px; border-radius:8px; overflow-x:auto; white-space:pre-wrap; }
+  table { border-collapse:collapse; width:100%; margin-top:12px; display:block; overflow-x:auto; }
+  th, td { border-bottom:1px solid var(--line); padding:6px 10px; text-align:left; white-space:nowrap; }
+  .err { color:var(--err); font-weight:600; }
+  .muted { color:var(--muted); }
+  :focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1 id="t-title">Ask the data</h1>
+      <p class="sub" id="t-sub">Plain-language questions. Read-only. Every question is logged.</p>
+    </div>
+    <div><button class="lang" id="en" type="button">EN</button><button class="lang" id="fr" type="button">FR</button></div>
+  </header>
+  <label for="token" id="t-token">Access token</label>
+  <input id="token" type="password" autocomplete="off">
+  <label for="q" id="t-q">Your question</label>
+  <textarea id="q" rows="3" maxlength="500"></textarea>
+  <button id="go" type="button">Ask</button>
+  <div id="out" aria-live="polite"></div>
+</main>
+<script>
+const T = {
+  en: {title:"Ask the data", sub:"Plain-language questions. Read-only. Every question is logged.", token:"Access token", q:"Your question", go:"Ask", sql:"SQL that ran", role:"Role", rows:"rows", cut:"Showing the first rows only.", none:"No rows.", net:"Could not reach the server."},
+  fr: {title:"Interroger les données", sub:"Questions en langage courant. Lecture seule. Chaque question est enregistrée.", token:"Jeton d'accès", q:"Votre question", go:"Demander", sql:"SQL exécuté", role:"Rôle", rows:"lignes", cut:"Seules les premières lignes sont affichées.", none:"Aucune ligne.", net:"Serveur injoignable."}
+};
+let lang = "en";
+const $ = (id) => document.getElementById(id);
+function setLang(l) {
+  lang = l; document.documentElement.lang = l;
+  $("t-title").textContent = T[l].title; $("t-sub").textContent = T[l].sub;
+  $("t-token").textContent = T[l].token; $("t-q").textContent = T[l].q; $("go").textContent = T[l].go;
+}
+$("en").onclick = () => setLang("en"); $("fr").onclick = () => setLang("fr");
+function el(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+$("go").onclick = async () => {
+  const out = $("out"); out.replaceChildren();
+  let res, data;
+  try {
+    res = await fetch("/ask", {method:"POST", headers:{"Content-Type":"application/json", "Authorization":"Bearer " + $("token").value}, body: JSON.stringify({question: $("q").value})});
+    data = await res.json();
+  } catch (e) { out.append(el("p", T[lang].net, "err")); return; }
+  if (!res.ok) { out.append(el("p", data.detail || res.statusText, "err")); return; }
+  if (!data.ok) { out.append(el("p", data.error, "err")); return; }
+  out.append(el("p", T[lang].role + ": " + data.role + " · " + data.rows.length + " " + T[lang].rows, "muted"));
+  if (!data.rows.length) out.append(el("p", T[lang].none));
+  else {
+    const table = el("table"), head = el("tr");
+    data.columns.forEach((c) => head.append(el("th", c)));
+    table.append(head);
+    data.rows.forEach((r) => { const tr = el("tr"); r.forEach((v) => tr.append(el("td", v === null ? "" : String(v)))); table.append(tr); });
+    out.append(table);
+  }
+  if (data.truncated) out.append(el("p", T[lang].cut, "muted"));
+  out.append(el("p", T[lang].sql, "muted"), el("pre", data.sql));
+};
+</script>
+</body>
+</html>
